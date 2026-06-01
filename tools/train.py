@@ -64,11 +64,11 @@ seed_random(args.seed, args.deter)
 
 import os
 from os import path as osp
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
 import torch
 from projects import MODELS, DATASET, HELPERS, OPTIMIZATION
 import torch.nn as nn
 import torch.distributed as dist
-from torch.cuda.amp import autocast as autocast
 
 class Trainer(object):
     def __init__(self, args, rank=0, world_size=1, amp=False):
@@ -90,8 +90,19 @@ class Trainer(object):
         self.__dump_infos__()
 
     def __create_logger__(self):
-        from torch.utils.tensorboard.writer import SummaryWriter
-        self.tf_logger = SummaryWriter(self.cfg.optimization.logger_cfg.log_dir) if self.is_master_node else None
+        class NullSummaryWriter(object):
+            def add_scalar(self, *args, **kwargs):
+                pass
+            def add_images(self, *args, **kwargs):
+                pass
+            def close(self):
+                pass
+
+        if self.is_master_node and os.environ.get('DISABLE_TENSORBOARD', '0') != '1':
+            from torch.utils.tensorboard.writer import SummaryWriter
+            self.tf_logger = SummaryWriter(self.cfg.optimization.logger_cfg.log_dir)
+        else:
+            self.tf_logger = NullSummaryWriter() if self.is_master_node else None
         self.tx_logger = HELPERS.get('Logger')(osp.join(self.cfg.optimization.logger_cfg.log_dir, osp.basename(self.args.cfg_path).replace('.py', '.txt'))) if self.is_master_node else None
 
     def __dump_infos__(self):
@@ -162,7 +173,7 @@ class Trainer(object):
             [self.tx_logger.log_str('load pretrained state_dict {}'.format(chkp_path)) if self.rank==0 else None]
         
         #mixed-precision
-        self.scaler = torch.cuda.amp.GradScaler(enabled=self.amp)
+        self.scaler = torch.amp.GradScaler('cuda', enabled=self.amp and torch.cuda.is_available())
             
     def _create_dataset(self):
         self.dataset = DATASET.build(self.cfg.data)
@@ -177,7 +188,10 @@ class Trainer(object):
             if isinstance(v, (dict,)):
                 self.dump_loss(loss_dict=v, prefix=prefix+'.'+k)
             else:
-                self.tf_logger.add_scalar(prefix+'/'+k, v/self.world_size if isinstance(v, (torch.Tensor,)) else v, global_step=self.glb_step)
+                scalar = v.detach() if isinstance(v, (torch.Tensor,)) else v
+                if isinstance(scalar, (torch.Tensor,)):
+                    scalar = scalar / self.world_size
+                self.tf_logger.add_scalar(prefix+'/'+k, scalar, global_step=self.glb_step)
 
     def dump_record(self, input_dict, p, step=None, prefix='bev_counting'):
         dump_fn = HELPERS.get(self.cfg.optimization.logger_cfg.log_record_fn)
@@ -286,7 +300,7 @@ class Trainer(object):
             self.glb_step += 1
             input_dict = edict(input_dict)
             optimizer.zero_grad()
-            with torch.cuda.amp.autocast(enabled=self.amp):
+            with torch.amp.autocast('cuda', enabled=self.amp and torch.cuda.is_available()):
                 p = self.model(input_dict)
                 loss_dict = self.model.module.loss_fn(p=p, input_dict=input_dict)
 
@@ -302,7 +316,9 @@ class Trainer(object):
                 with torch.no_grad():
                     self.dump_loss(loss_dict, prefix='bev_counting_train')
                 if self.is_master_node:
-                    self.tx_logger.log_str({k:round(float(v), 4) for (k, v) in loss_dict.items()})
+                    def _scalar(v):
+                        return float(v.detach()) if isinstance(v, (torch.Tensor,)) else float(v)
+                    self.tx_logger.log_str({k:round(_scalar(v), 4) for (k, v) in loss_dict.items()})
             
             if self.is_master_node and self.glb_step % self.cfg.optimization.logger_cfg.tf_log_record_period == 0:
                 with torch.no_grad():
@@ -349,19 +365,27 @@ class Trainer(object):
         if self.is_master_node:
             os.makedirs(sv_folder, exist_ok=True)
         best_nae_bev, best_mae_bev, best_nae_img, best_mae_img=math.inf, math.inf, math.inf, math.inf
+        eval_period = int(self.cfg.optimization.logger_cfg.get('eval_period', self.cfg.optimization.logger_cfg.chkp_sv_period))
+        save_period = int(self.cfg.optimization.logger_cfg.chkp_sv_period)
         for epoch in range(self.start_epoch, self.cfg.optimization.train_cfg.epoches):
             self.train(epoch)
+            current_epoch = epoch + 1
             chkp_path = osp.join(sv_folder, f'{epoch+1}.pth')
-            if (epoch+1) % self.cfg.optimization.logger_cfg.chkp_sv_period!=0:
-                continue
+            should_save = save_period > 0 and current_epoch % save_period == 0
+            should_eval = eval_period > 0 and (current_epoch % eval_period == 0 or current_epoch == self.cfg.optimization.train_cfg.epoches)
 
-            if self.is_master_node and self.epoch % 10 == 0:
+            if self.is_master_node and should_save:
                 self.dump_chkp(chkp_path)
+
+            if not should_eval:
+                continue
 
             with torch.no_grad():
                 eval_result = self.evaluate(apply_mask = True if self.args.apply_image_mask > 0 else False)
 
             if self.is_master_node:
+                eval_msg = {k: round(float(v), 4) for (k, v) in eval_result.items()}
+                print(f'[eval][epoch {current_epoch}] {eval_msg}', flush=True)
                 self.tx_logger.log_str(eval_result)
                 if best_mae_bev > float(eval_result.mae_bev):
                     best_chkp_path = osp.join(sv_folder, 'best_mae_bev.pth')

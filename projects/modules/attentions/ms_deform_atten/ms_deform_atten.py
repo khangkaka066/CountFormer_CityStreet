@@ -11,7 +11,7 @@ import math
 import os
 
 import torch
-from torch.cuda.amp import custom_bwd, custom_fwd
+from torch.amp import custom_bwd, custom_fwd
 from torch.autograd.function import Function, once_differentiable
 import warnings
 import torch.nn as nn
@@ -374,7 +374,7 @@ def multi_scale_deformable_attn_pytorch(value, value_spatial_shapes,sampling_loc
 
 class MultiScaleDeformableAttnFunction(Function):
     @staticmethod
-    @custom_fwd(cast_inputs=torch.float32)
+    @custom_fwd(device_type='cuda', cast_inputs=torch.float32)
     def forward(ctx, value, value_spatial_shapes, value_level_start_index,
                 sampling_locations, attention_weights, im2col_step):
         ctx.im2col_step = im2col_step
@@ -392,7 +392,7 @@ class MultiScaleDeformableAttnFunction(Function):
 
     @staticmethod
     @once_differentiable
-    @custom_bwd
+    @custom_bwd(device_type='cuda')
     def backward(ctx, grad_output):
         value, value_spatial_shapes, value_level_start_index,\
             sampling_locations, attention_weights = ctx.saved_tensors

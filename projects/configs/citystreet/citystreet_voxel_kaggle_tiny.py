@@ -24,7 +24,7 @@ total_view=3
 
 #config of the head-info
 down_scale=4           #the down-scale of the image space density map
-_dim_ = [32, 64, 96, 128]
+_dim_ = [32, 64, 128, 128]
 _ffn_dim_ = [d*2 for d in _dim_]
 vox_h=[64,32,16,8]
 vox_w=[64,32,16,8]
@@ -33,7 +33,7 @@ _num_points_=[2,4,4,6]
 _num_layers_=[1,1,2,2]
 
 #for vox-feature fusion
-dim_vox_fpn    = [_dim_[3], 128, 128, _dim_[2], 96, 96, _dim_[1], 64, 64, _dim_[0], 32, 16, 16]
+dim_vox_fpn    = [_dim_[3], 128, 128, _dim_[2], 128, 128, _dim_[1], 64, 64, _dim_[0], 32, 16, 16]
 stride_vox_fpn = [1,          1,   2,        1,    1,  2,        1,  1,  2,        1,  2,  1, ] 
 out_feat_ids   = [2,  5, 8, 11]
 
@@ -397,6 +397,7 @@ optimization = edict(
         log_record_fn='visualize_vox_counting_samples', #dump fn
         log_dir=osp.join('workdirs', exp_name),
         chkp_sv_path=osp.join('workdirs', exp_name),
-        chkp_sv_period=1,
+        eval_period=int(os.environ.get('KAGGLE_EVAL_PERIOD', '5')),
+        chkp_sv_period=int(os.environ.get('KAGGLE_EVAL_PERIOD', '5')),
     )
 )

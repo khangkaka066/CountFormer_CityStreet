@@ -134,7 +134,7 @@ class VOXCounter(nn.Module):
         raise "TODO: I will write the TTA asap."
 
     def forward(self, input_dict, *args, **kwargs):
-        with torch.cuda.amp.autocast(enabled=self.cfg.get('amp', False)):
+        with torch.amp.autocast('cuda', enabled=self.cfg.get('amp', False) and torch.cuda.is_available()):
             x = input_dict.input_data.image_set
             b, n, _, _, _ = x.shape
             x = rearrange(x, 'b n ... -> (b n) ...')
