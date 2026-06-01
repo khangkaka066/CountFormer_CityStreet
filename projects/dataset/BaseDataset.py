@@ -46,8 +46,11 @@ class BaseDataset(torch.utils.data.Dataset):
         map_x, map_y = remap[...,0].astype(np.float32), remap[...,1].astype(np.float32)
         undistorted_image  = cv2.remap(image, map_x, map_y, cv2.INTER_LANCZOS4)
         undistorted_mask   = cv2.remap(mask, map_x, map_y, cv2.INTER_LANCZOS4)
-        undistorted_points = cv2.undistortPoints(points.astype(np.float32), cameraMatrix, distCoeffs, None, cameraMatrix)
-        return undistorted_image, undistorted_mask, undistorted_points.reshape(-1, 2)
+        if points.size == 0:
+            undistorted_points = points.reshape(0, 2).astype(np.float32)
+        else:
+            undistorted_points = cv2.undistortPoints(points.astype(np.float32), cameraMatrix, distCoeffs, None, cameraMatrix).reshape(-1, 2)
+        return undistorted_image, undistorted_mask, undistorted_points
 
     def load_remap(self):
         remap = []
