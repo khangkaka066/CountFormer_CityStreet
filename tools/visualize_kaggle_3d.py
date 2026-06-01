@@ -157,7 +157,7 @@ def main():
     fig = build_figure(pred_density, gt_points, cfg.world_range, args.topk)
 
     os.makedirs(osp.dirname(args.out), exist_ok=True)
-    fig.write_html(args.out, include_plotlyjs='cdn')
+    fig.write_html(args.out, include_plotlyjs=True, full_html=True)
 
     summary = {
         'checkpoint': checkpoint,
