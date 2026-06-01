@@ -15,6 +15,7 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.autograd.function import Function, once_differentiable
 import warnings
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.cpp_extension import load
 from einops import rearrange
 
