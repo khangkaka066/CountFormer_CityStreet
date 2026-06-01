@@ -7,6 +7,7 @@ export OMP_NUM_THREADS=1
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 export PRETRAINED=${PRETRAINED:-1}
 export KAGGLE_EPOCHS=${KAGGLE_EPOCHS:-80}
+export USE_MSDA_PYTORCH=${USE_MSDA_PYTORCH:-1}
 
 proj_path=$(pwd)
 dir_name=$(dirname "$0")

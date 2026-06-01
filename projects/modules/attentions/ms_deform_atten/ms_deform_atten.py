@@ -8,6 +8,7 @@
 
 from ..register import ATTENTION
 import math
+import os
 
 import torch
 from torch.cuda.amp import custom_bwd, custom_fwd
@@ -16,6 +17,8 @@ import warnings
 import torch.nn as nn
 from torch.utils.cpp_extension import load
 from einops import rearrange
+
+USE_PYTORCH_MSDA = os.environ.get('USE_MSDA_PYTORCH', '0') == '1'
 
 @ATTENTION.register_module()
 class MSDeformableAttention3D(nn.Module):
@@ -161,7 +164,7 @@ class MSDeformableAttention3D(nn.Module):
                 f'Last dim of reference_points must be'
                 f' 2 or 4, but get {reference_points.shape[-1]} instead.')
         
-        if torch.cuda.is_available() and value.is_cuda:
+        if not USE_PYTORCH_MSDA and torch.cuda.is_available() and value.is_cuda:
             output = MultiScaleDeformableAttnFunction.apply(
                 value, spatial_shapes, level_start_index, sampling_locations,
                 attention_weights, self.im2col_step)
@@ -294,7 +297,7 @@ class MultiScaleDeformableAttention(nn.Module):
             raise ValueError(
                 f'Last dim of reference_points must be'
                 f' 2 or 4, but get {reference_points.shape[-1]} instead.')
-        if torch.cuda.is_available() and value.is_cuda:
+        if not USE_PYTORCH_MSDA and torch.cuda.is_available() and value.is_cuda:
             output = MultiScaleDeformableAttnFunction.apply(
                 value, spatial_shapes, level_start_index, sampling_locations,
                 attention_weights, self.im2col_step)
@@ -411,15 +414,16 @@ class MultiScaleDeformableAttnFunction(Function):
         return grad_value, None, None, \
             grad_sampling_loc, grad_attn_weight, None
 
-ms_deform_atten_cuda = load(
-    name='ms_deform_atten',
-    sources=[
-        'projects/modules/attentions/ms_deform_atten/src/ms_deform_atten.cpp',
-        'projects/modules/attentions/ms_deform_atten/src/ms_deform_atten.cu',
-    ],
-    extra_cflags=['-O2'],
-    verbose=True
-)
+if not USE_PYTORCH_MSDA:
+    ms_deform_atten_cuda = load(
+        name='ms_deform_atten',
+        sources=[
+            'projects/modules/attentions/ms_deform_atten/src/ms_deform_atten.cpp',
+            'projects/modules/attentions/ms_deform_atten/src/ms_deform_atten.cu',
+        ],
+        extra_cflags=['-O2'],
+        verbose=True
+    )
 
-ms_deform_attn_forward_impl  = ms_deform_atten_cuda.ms_deform_attn_forward
-ms_deform_attn_backward_impl = ms_deform_atten_cuda.ms_deform_attn_backward
+    ms_deform_attn_forward_impl  = ms_deform_atten_cuda.ms_deform_attn_forward
+    ms_deform_attn_backward_impl = ms_deform_atten_cuda.ms_deform_attn_backward
