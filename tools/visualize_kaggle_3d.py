@@ -140,7 +140,7 @@ def main():
     dataset_bundle = DATASET.build(cfg.data, datasets=[args.part])
     dataset = dataset_bundle[args.part].dataset
     sample = dataset[args.sample_idx % len(dataset)]
-    collate_fn = DATASET.get('batch_collect_fn') if args.part != 'test' else DATASET.get('tta_batch_collect_fn')
+    collate_fn = dataset_bundle[args.part].loader.collate_fn
     batch = edict(collate_fn([sample]))
     batch = to_cuda(batch)
 
