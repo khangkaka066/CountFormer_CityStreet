@@ -7,7 +7,7 @@ exp_name = 'citystreet/vox/kaggle_tiny'
 
 #config of the image backbone
 image_bkb_indices      = [0,1,2,3]
-image_bkb_channels     = [64, 128, 256, 512]
+image_bkb_channels     = [256, 512, 1024, 2048]
 image_neck_indices     = [0,1,2,3]
 image_neck_channels    = 128
 _num_levels_           = len(image_neck_indices)
@@ -241,7 +241,7 @@ model = edict(
     scene_density_map_scale=scene_density_map_scale,
     
     image_feature_backbone=edict(
-        type='resnet18',
+        type='resnet50',
         out_feature_indices=image_bkb_indices,
         pretrained=bool(int(os.environ.get('PRETRAINED', '1'))),
         progress=True,
